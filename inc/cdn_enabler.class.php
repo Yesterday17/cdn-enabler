@@ -87,215 +87,7 @@ class CDN_Enabler
                 'cdn_enabler_requirements_check',
             ]
         );
-
-        /* add admin purge link */
-        add_action(
-            'admin_bar_menu',
-            [
-                __CLASS__,
-                'add_admin_links',
-            ],
-            90
-        );
-        /* process purge request */
-        add_action(
-            'admin_notices',
-            [
-                __CLASS__,
-                'process_purge_request',
-            ]
-        );
     }
-
-
-    /**
-     * add Zone purge link
-     *
-     * @since   1.0.5
-     * @change  1.0.6
-     *
-     * @hook    mixed
-     *
-     * @param   object  menu properties
-     */
-
-    public static function add_admin_links($wp_admin_bar) {
-        global $wp;
-        $options = self::get_options();
-
-        // check user role
-        if ( ! is_admin_bar_showing() or ! apply_filters('user_can_clear_cache', current_user_can('manage_options')) ) {
-            return;
-        }
-
-        // verify Zone settings are set
-        if ( ! is_int($options['keycdn_zone_id'])
-                or $options['keycdn_zone_id'] <= 0 ) {
-            return;
-        }
-        if ( ! array_key_exists('keycdn_api_key', $options)
-                or strlen($options['keycdn_api_key']) < 20 ) {
-            return;
-        }
-
-        // redirect to admin page if necessary so we can display notification
-        $current_url = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' .
-                        $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
-        $goto_url = get_admin_url();
-
-        if ( stristr($current_url, get_admin_url()) ) {
-            $goto_url = $current_url;
-        }
-
-        // add admin purge link
-        $wp_admin_bar->add_menu(
-            [
-                'id'      => 'purge-cdn',
-                'href'   => wp_nonce_url( add_query_arg('_cdn', 'purge', $goto_url), '_cdn__purge_nonce'),
-                'parent' => 'top-secondary',
-                'title'     => '<span class="ab-item">'.esc_html__('Purge CDN', 'cdn-enabler').'</span>',
-                'meta'   => ['title' => esc_html__('Purge CDN', 'cdn-enabler')],
-            ]
-        );
-
-        if ( ! is_admin() ) {
-            // add admin purge link
-            $wp_admin_bar->add_menu(
-                [
-                    'id'      => 'purge-cdn',
-                    'href'   => wp_nonce_url( add_query_arg('_cdn', 'purge', $goto_url), '_cdn__purge_nonce'),
-                    'parent' => 'top-secondary',
-                    'title'     => '<span class="ab-item">'.esc_html__('Purge CDN', 'cdn-enabler').'</span>',
-                    'meta'   => ['title' => esc_html__('Purge CDN', 'cdn-enabler')],
-                ]
-            );
-        }
-    }
-
-
-    /**
-     * process purge request
-     *
-     * @since   1.0.5
-     * @change  1.0.6
-     *
-     * @param   array  $data  array of metadata
-     */
-    public static function process_purge_request($data) {
-        $options = self::get_options();
-
-        // check if clear request
-        if ( empty($_GET['_cdn']) OR $_GET['_cdn'] !== 'purge' ) {
-            return;
-        }
-
-        // validate nonce
-        if ( empty($_GET['_wpnonce']) OR ! wp_verify_nonce($_GET['_wpnonce'], '_cdn__purge_nonce') ) {
-            return;
-        }
-
-        // check user role
-        if ( ! is_admin_bar_showing() ) {
-            return;
-        }
-
-        // load if network
-        if ( ! function_exists('is_plugin_active_for_network') ) {
-            require_once( ABSPATH. 'wp-admin/includes/plugin.php' );
-        }
-
-        // API call to purge zone
-        $response = wp_remote_get( 'https://api.keycdn.com/zones/purge/'. $options['keycdn_zone_id'] .'.json',
-            [
-                'timeout' => 20,
-                'headers' => [
-                    'Authorization' => 'Basic ' . base64_encode( $options['keycdn_api_key'] . ':' ),
-                ]
-            ]
-        );
-
-        // check results - error connecting
-        if ( is_wp_error( $response ) ) {
-            printf(
-                '<div class="notice notice-error is-dismissible"><p>%s</p></div>',
-                esc_html__('Error connecting to API - '. $response->get_error_message(), 'cdn-enabler')
-            );
-
-            return;
-        }
-
-        // check HTTP response
-        if ( is_array( $response ) and is_admin_bar_showing()) {
-            $json = json_decode($response['body'], true);
-            $rc = wp_remote_retrieve_response_code( $response );
-
-            // success
-            if ( $rc == 200
-                    and is_array($json)
-                    and array_key_exists('description', $json) )
-            {
-                printf(
-                    '<div class="notice notice-success is-dismissible"><p>%s</p></div>',
-                    esc_html__($json['description'], 'cdn-enabler')
-                );
-
-                return;
-            } elseif ( $rc == 200 ) {
-                // return code 200 but no message
-                printf(
-                    '<div class="notice notice-warning is-dismissible"><p>%s</p></div>',
-                    esc_html__('HTTP returned 200 but no message received.')
-                );
-
-                return;
-            }
-
-            // For some API errors we return custom error messages
-            $custom_messages = array(
-                401 => "invalid API key",
-                403 => "invalid zone id",
-                451 => "too many failed attempts",
-            );
-
-            if ( array_key_exists($rc, $custom_messages) ) {
-                printf(
-                    '<div class="notice notice-error is-dismissible"><p>%s</p></div>',
-                    esc_html__('HTTP returned '. $rc .': '.$custom_messages[$rc], 'cdn-enabler')
-                );
-
-                return;
-            }
-
-            // API call returned != 200 and also a status message
-            if ( is_array($json)
-                    and array_key_exists('status', $json)
-                    and $json['status'] != "" ) {
-                printf(
-                    '<div class="notice notice-error is-dismissible"><p>%s</p></div>',
-                    esc_html__('HTTP returned '. $rc .': '.$json['description'], 'cdn-enabler')
-                );
-            } else {
-                // Something else went wrong - show HTTP error code
-                printf(
-                    '<div class="notice notice-error is-dismissible"><p>%s</p></div>',
-                    esc_html__('HTTP returned '. $rc)
-                );
-            }
-        }
-
-
-        if ( ! is_admin() ) {
-            wp_safe_redirect(
-                remove_query_arg(
-                    '_cache',
-                    wp_get_referer()
-                )
-            );
-
-            exit();
-        }
-    }
-
 
 
     /**
@@ -360,8 +152,6 @@ class CDN_Enabler
                 'excludes'       => '.php',
                 'relative'       => '1',
                 'https'          => '',
-                'keycdn_api_key' => '',
-                'keycdn_zone_id' => '',
             ]
         );
     }
@@ -424,8 +214,6 @@ class CDN_Enabler
                 'excludes'        => '.php',
                 'relative'        => 1,
                 'https'           => 0,
-                'keycdn_api_key'  => '',
-                'keycdn_zone_id'  => '',
             ]
         );
     }
@@ -444,15 +232,16 @@ class CDN_Enabler
 
         $excludes = array_map('trim', explode(',', $options['excludes']));
 
+        $now = defined('MULTIPLE_DOMAIN_DOMAIN') ? constant('MULTIPLE_DOMAIN_DOMAIN') : get_option('home');
+        $cdn_url = preg_match("yesterday17") ? $options['url'] : 'https://static.mmf.moe';
+
         return new CDN_Enabler_Rewriter(
-            get_option('home'),
-            $options['url'],
+            $now,
+            $cdn_url,
             $options['dirs'],
             $excludes,
             $options['relative'],
-            $options['https'],
-            $options['keycdn_api_key'],
-            $options['keycdn_zone_id']
+            $options['https']
         );
     }
 

@@ -15,8 +15,6 @@ class CDN_Enabler_Rewriter
     var $excludes       = []; // excludes
     var $relative       = false;   // use CDN on relative paths
     var $https          = false;   // use CDN on HTTPS
-    var $keycdn_api_key = null;    // optional API key for KeyCDN
-    var $keycdn_zone_id = null;    // optional KeyCDN Zone ID
 
     /**
      * constructor
@@ -31,9 +29,7 @@ class CDN_Enabler_Rewriter
         $dirs,
         array $excludes,
         $relative,
-        $https,
-        $keycdn_api_key,
-        $keycdn_zone_id
+        $https
     ) {
         $this->blog_url       = $blog_url;
         $this->cdn_url        = $cdn_url;
@@ -41,8 +37,6 @@ class CDN_Enabler_Rewriter
         $this->excludes       = $excludes;
         $this->relative       = $relative;
         $this->https          = $https;
-        $this->keycdn_api_key = $keycdn_api_key;
-        $this->keycdn_zone_id = $keycdn_zone_id;
     }
 
 
