@@ -233,7 +233,7 @@ class CDN_Enabler
         $excludes = array_map('trim', explode(',', $options['excludes']));
 
         $now = defined('MULTIPLE_DOMAIN_DOMAIN') ? constant('MULTIPLE_DOMAIN_DOMAIN') : get_option('home');
-        $cdn_url = preg_match("yesterday17") ? $options['url'] : 'https://static.mmf.moe';
+        $cdn_url = preg_match("/yesterday17/", $now) ? $options['url'] : 'https://static.mmf.moe';
 
         return new CDN_Enabler_Rewriter(
             $now,
@@ -257,9 +257,9 @@ class CDN_Enabler
         $options = self::get_options();
 
         // check if origin equals cdn url
-        if (get_option('home') == $options['url']) {
-            return;
-        }
+        //if (get_option('home') == $options['url']) {
+        //    return;
+        //}
 
         $rewriter = self::get_rewriter();
         ob_start(array(&$rewriter, 'rewrite'));
